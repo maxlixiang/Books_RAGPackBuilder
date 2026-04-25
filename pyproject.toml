@@ -1,0 +1,18 @@
+[project]
+name = "local-ragpack"
+version = "0.1.0"
+description = "Build one-file JSONL RAG data packs from Chinese PDF/TXT books."
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "sentence-transformers>=2.7",
+]
+
+[project.optional-dependencies]
+pdf = [
+  "pymupdf>=1.24",
+]
+
+[project.scripts]
+ragpack = "ragpack_builder.cli:main"
+
