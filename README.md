@@ -16,10 +16,11 @@ BAAI/bge-large-zh-v1.5
 
 ## 目录结构
 
-请把原始书籍放入 `raw_data` 下对应的分类文件夹：
+原始书籍可以直接放在 `raw_data` 根目录下，也可以手动放入对应的分类文件夹：
 
 ```text
 raw_data/
+  某本书.pdf
   social_science/
   textbook/
   technical/
@@ -32,7 +33,7 @@ raw_data/
 output/
 ```
 
-程序会根据文件夹自动选择处理模式：
+运行 `python main.py` 时，程序会先把 `raw_data` 根目录下的 PDF 自动分类并移动到对应文件夹，然后根据文件夹选择处理模式：
 
 ```text
 raw_data/social_science  -> social_science 模式，社科/人文/通识类
@@ -550,8 +551,11 @@ python main.py
 程序会自动处理：
 
 ```text
-raw_data/social_science 里的 PDF/TXT
-raw_data/textbook 里的 PDF/TXT
+1. 检测 raw_data 根目录下尚未分类的 PDF
+2. 根据 PDF 书签和前若干页文本自动判断分类
+3. 把 PDF 移动到 raw_data/<分类>/ 目录
+4. 扫描所有分类目录里的 PDF/TXT
+5. 生成 output/书名.rag.jsonl
 ```
 
 先生成不带 embedding 的调试版：
@@ -572,9 +576,9 @@ python main.py --no-embedding
 书名.rag.jsonl
 ```
 
-## 自动分类未归档 PDF
+## 预览自动分类结果
 
-如果不确定一本书应该放入哪个文件夹，可以先把 PDF 放在 `raw_data` 根目录下：
+`python main.py` 默认会自动分类并继续构建。如果你不确定分类是否合适，可以先把 PDF 放在 `raw_data` 根目录下：
 
 ```text
 raw_data/
@@ -587,19 +591,27 @@ raw_data/
   english/
 ```
 
-然后先预览分类结果：
+然后只预览分类结果，不移动文件：
 
 ```powershell
 python main.py classify --dry-run
 ```
 
-确认无误后执行移动：
+确认无误后有两种选择。
+
+只执行分类移动：
 
 ```powershell
 python main.py classify
 ```
 
-程序会根据 PDF 书签和前若干页文本中的结构信号自动判断分类，并把 PDF 移动到对应文件夹。
+或者直接执行完整流程：
+
+```powershell
+python main.py
+```
+
+程序会根据 PDF 书签和前若干页文本中的结构信号自动判断分类，把 PDF 移动到对应文件夹，然后继续生成 `.rag.jsonl`。
 
 判断信号包括：
 
@@ -619,8 +631,9 @@ reference：词典、百科、Glossary、Dictionary、大量短词条
 
 ```text
 would move: 某本书.pdf -> raw_data/textbook/某本书.pdf
-  scores: english=0, legal=0, paper=0, social_science=2, technical=0, textbook=6
-  signals: textbook+6: detected 章/节 structure
+  scores: textbook=6, social_science=2, english=0, legal=0, paper=0, technical=0
+  signals:
+    textbook+6: detected 章/节 structure
 ```
 
 如果分类结果不满意，可以手动把 PDF 移动到你认为更合适的文件夹。自动分类只是辅助判断，不会影响已经放在分类子文件夹里的书。
@@ -697,19 +710,25 @@ pip install -e .
 
 ## 推荐工作流
 
-1. 把书放入 `raw_data/social_science` 或 `raw_data/textbook`
-2. 先运行：
+1. 把 PDF 放入 `raw_data` 根目录，或手动放入 `raw_data/<分类>` 目录
+2. 如果不确定分类，可以先运行：
+
+```powershell
+python main.py classify --dry-run
+```
+
+3. 先生成不带 embedding 的调试版：
 
 ```powershell
 python main.py --no-embedding
 ```
 
-3. 抽查 `output/书名_noembedding.rag.jsonl`
-4. 确认标题、页码、chunk 边界正常
-5. 再运行：
+4. 抽查 `output/书名_noembedding.rag.jsonl`
+5. 确认标题、chunk 边界正常
+6. 再运行：
 
 ```powershell
 python main.py
 ```
 
-6. 保存正式的 `output/书名.rag.jsonl`
+7. 保存正式的 `output/书名.rag.jsonl`

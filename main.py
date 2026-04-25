@@ -4,7 +4,13 @@ import argparse
 from pathlib import Path
 from types import SimpleNamespace
 
-from ragpack_builder.classifier import classify_raw_entries, format_classification_scores, format_classification_signals
+from ragpack_builder.classifier import (
+    Classification,
+    ClassificationError,
+    classify_raw_entries,
+    format_classification_scores,
+    format_classification_signals,
+)
 from ragpack_builder.cli import build_pack
 from ragpack_builder.extractors import ImageOnlyPdfError, UnsupportedSourceError
 from ragpack_builder.profiles import DEFAULT_MODEL, PROFILE_DEFAULTS
@@ -55,16 +61,14 @@ def make_build_args(source: Path, profile: str, args: argparse.Namespace) -> Sim
 
 
 def build_all(args: argparse.Namespace) -> int:
-    loose_files = sorted(path for path in RAW_DATA_DIR.iterdir() if path.is_file()) if RAW_DATA_DIR.exists() else []
-    if loose_files:
-        print("Found unclassified file(s) directly under raw_data:")
-        for path in loose_files:
-            if path.suffix.lower() not in SUPPORTED_SUFFIXES:
-                print(f"  - {path} -> 非支持文件，请检查文件格式")
-            else:
-                print(f"  - {path}")
-        print("Run `python main.py classify` first, or move them into a profile folder manually.")
-        return 1
+    classify_errors = 0
+    results, errors = classify_raw_entries(RAW_DATA_DIR, move=True)
+    if results:
+        print(f"Classified {len(results)} unclassified PDF file(s):")
+        print_classification_results(results)
+    if errors:
+        classify_errors = len(errors)
+        print_classification_errors(errors)
 
     jobs = [(profile, RAW_DATA_DIR / profile) for profile in PROFILE_DEFAULTS]
     invalid_files: list[Path] = []
@@ -91,7 +95,7 @@ def build_all(args: argparse.Namespace) -> int:
             print(f"  error: {exc}")
             continue
         print(f"  -> {out_path}")
-    return 1 if invalid_files or failures else 0
+    return 1 if invalid_files or failures or classify_errors else 0
 
 
 def classify_all(args: argparse.Namespace) -> int:
@@ -99,16 +103,24 @@ def classify_all(args: argparse.Namespace) -> int:
     if not results and not errors:
         print(f"No unclassified PDF files found directly under {RAW_DATA_DIR.resolve()}")
         return 0
+    print_classification_results(results, dry_run=args.dry_run)
+    print_classification_errors(errors)
+    return 1 if errors else 0
+
+
+def print_classification_results(results: list[Classification], dry_run: bool = False) -> None:
     for result in results:
-        action = "would move" if args.dry_run else "moved"
+        action = "would move" if dry_run else "moved"
         print(f"{action}: {result.source.name} -> raw_data/{result.profile}/{result.destination.name}")
         print("  scores:", format_classification_scores(result.scores))
         print("  signals:")
         for signal in format_classification_signals(result.profile, result.scores, result.signals):
             print(f"    {signal}")
+
+
+def print_classification_errors(errors: list[ClassificationError]) -> None:
     for error in errors:
         print(f"skip: {error.source.name} -> {error.message}")
-    return 1 if errors else 0
 
 
 def make_parser() -> argparse.ArgumentParser:
