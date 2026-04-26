@@ -7,6 +7,7 @@ from .chunking import make_chunks
 from .classifier import classify_raw_entries, format_classification_scores, format_classification_signals
 from .embeddings import NullEmbedder, SentenceTransformerEmbedder
 from .extractors import ImageOnlyPdfError, UnsupportedSourceError, extract_document
+from .inspector import format_inspection_report, inspect_book_pack
 from .profiles import DEFAULT_MODEL, PROFILE_DEFAULTS
 from .toc import (
     augment_toc_with_body_headings,
@@ -162,6 +163,12 @@ def make_parser() -> argparse.ArgumentParser:
     classify.add_argument("--raw-dir", default="raw_data", help="Raw data directory.")
     classify.add_argument("--dry-run", action="store_true", help="Only show decisions; do not move files.")
     classify.set_defaults(func=classify_command)
+
+    inspect = sub.add_parser("inspect", help="Inspect a no-embedding book RAGPack against the source PDF.")
+    inspect.add_argument("pdf", help="Source PDF file.")
+    inspect.add_argument("ragpack", help="*_noembedding.rag.jsonl file.")
+    inspect.add_argument("--no-report", action="store_true", help="Do not write *.inspect.json report file.")
+    inspect.set_defaults(func=inspect_command)
     return parser
 
 
@@ -179,6 +186,11 @@ def classify_command(args: argparse.Namespace) -> None:
             print(f"    {signal}")
     for error in errors:
         print(f"skip: {error.source.name} -> {error.message}")
+
+
+def inspect_command(args: argparse.Namespace) -> None:
+    report = inspect_book_pack(Path(args.pdf), Path(args.ragpack), write_report=not args.no_report)
+    print(format_inspection_report(report))
 
 
 def main(argv: list[str] | None = None) -> None:

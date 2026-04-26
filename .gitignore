@@ -13,6 +13,8 @@ env/
 # Local source books and generated RAG packs
 *.pdf
 *.jsonl
+*.inspect.json
+*.inspect.html
 raw_data/**
 !raw_data/
 !raw_data/.gitkeep
