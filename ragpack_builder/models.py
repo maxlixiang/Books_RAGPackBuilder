@@ -28,6 +28,7 @@ class Section:
     page_start: int | None = None
     page_end: int | None = None
     child_sections: list["Section"] = field(default_factory=list)
+    source_metadata: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -38,4 +39,4 @@ class ChunkDraft:
     page_start: int | None
     page_end: int | None
     split_info: dict
-
+    source_metadata: dict = field(default_factory=dict)

@@ -4,6 +4,7 @@ PROFILE_DEFAULTS = {
     "social_science": {
         "target_chars": 800,
         "max_chars": 1200,
+        "section_split_chars": 2000,
         "min_chunk_chars": 220,
         "overlap_chars": 100,
         "max_chunk_heading_level": None,
@@ -12,6 +13,7 @@ PROFILE_DEFAULTS = {
     "textbook": {
         "target_chars": 700,
         "max_chars": 1100,
+        "section_split_chars": 2000,
         "min_chunk_chars": 180,
         "overlap_chars": 80,
         "max_chunk_heading_level": 4,
@@ -20,6 +22,7 @@ PROFILE_DEFAULTS = {
     "technical": {
         "target_chars": 700,
         "max_chars": 1100,
+        "section_split_chars": 2000,
         "min_chunk_chars": 180,
         "overlap_chars": 80,
         "max_chunk_heading_level": 4,
@@ -28,6 +31,7 @@ PROFILE_DEFAULTS = {
     "paper": {
         "target_chars": 700,
         "max_chars": 1100,
+        "section_split_chars": 1800,
         "min_chunk_chars": 180,
         "overlap_chars": 80,
         "max_chunk_heading_level": 4,
@@ -36,6 +40,7 @@ PROFILE_DEFAULTS = {
     "legal": {
         "target_chars": 650,
         "max_chars": 1000,
+        "section_split_chars": 1600,
         "min_chunk_chars": 120,
         "overlap_chars": 60,
         "max_chunk_heading_level": 4,
@@ -44,6 +49,7 @@ PROFILE_DEFAULTS = {
     "english": {
         "target_chars": 900,
         "max_chars": 1400,
+        "section_split_chars": 2200,
         "min_chunk_chars": 220,
         "overlap_chars": 120,
         "max_chunk_heading_level": 4,
@@ -52,6 +58,7 @@ PROFILE_DEFAULTS = {
     "fiction": {
         "target_chars": 1000,
         "max_chars": 1600,
+        "section_split_chars": 2400,
         "min_chunk_chars": 260,
         "overlap_chars": 160,
         "max_chunk_heading_level": None,
@@ -60,6 +67,7 @@ PROFILE_DEFAULTS = {
     "classical": {
         "target_chars": 700,
         "max_chars": 1100,
+        "section_split_chars": 2000,
         "min_chunk_chars": 160,
         "overlap_chars": 80,
         "max_chunk_heading_level": 3,
@@ -68,9 +76,41 @@ PROFILE_DEFAULTS = {
     "reference": {
         "target_chars": 550,
         "max_chars": 900,
+        "section_split_chars": 1400,
         "min_chunk_chars": 80,
         "overlap_chars": 40,
         "max_chunk_heading_level": 2,
         "heading_detection": "pdf_outline_first_reference_v1",
+    },
+}
+
+
+MARKDOWN_PROFILE_DEFAULTS = {
+    "journal": {
+        "target_chars": 700,
+        "max_chars": 1100,
+        "section_split_chars": 1800,
+        "min_chunk_chars": 120,
+        "overlap_chars": 80,
+        "max_chunk_heading_level": 4,
+        "heading_detection": "markdown_heading_journal_v1",
+    },
+    "tech_notes": {
+        "target_chars": 700,
+        "max_chars": 1100,
+        "section_split_chars": 2000,
+        "min_chunk_chars": 120,
+        "overlap_chars": 80,
+        "max_chunk_heading_level": 4,
+        "heading_detection": "markdown_heading_tech_notes_v1",
+    },
+    "web_page_collection": {
+        "target_chars": 700,
+        "max_chars": 1100,
+        "section_split_chars": 1800,
+        "min_chunk_chars": 120,
+        "overlap_chars": 80,
+        "max_chunk_heading_level": 4,
+        "heading_detection": "markdown_heading_web_page_collection_v1",
     },
 }

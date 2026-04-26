@@ -35,6 +35,29 @@ def test_long_section_splits():
     assert chunks[0].split_info["reason"] == "section_exceeds_max_chars"
 
 
+def test_natural_section_kept_even_when_above_max_chars():
+    chapter = item(1, "第一章", 1)
+    text = "这是一个完整小节。" * 90
+    sections = [Section(chapter, [chapter], text, 1, 2)]
+
+    chunks = make_chunks(sections, max_chars=300, section_split_chars=2000, overlap_chars=20)
+
+    assert len(chunks) == 1
+    assert chunks[0].text == text
+    assert chunks[0].split_info["reason"] == "natural_section_within_split_threshold"
+
+
+def test_section_above_split_threshold_splits():
+    chapter = item(1, "第一章", 1)
+    text = "这是一个很长的小节。" * 260
+    sections = [Section(chapter, [chapter], text, 1, 2)]
+
+    chunks = make_chunks(sections, max_chars=300, section_split_chars=800, overlap_chars=20)
+
+    assert len(chunks) > 1
+    assert chunks[0].split_info["reason"] == "section_exceeds_max_chars"
+
+
 def test_textbook_heading_levels():
     page = PageText(
         1,

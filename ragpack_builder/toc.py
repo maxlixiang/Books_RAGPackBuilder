@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 import re
+import unicodedata
 
 from .models import PageText, Section, TocItem
 from .utils import normalize_text, normalize_title, reflow_zh_text
@@ -30,6 +31,9 @@ EN_PART_RE = re.compile(r"^Part\s+[IVXLCDM\d]+[:.\s-].*$", re.IGNORECASE)
 EN_CHAPTER_RE = re.compile(r"^Chapter\s+\d+[:.\s-].*$", re.IGNORECASE)
 EN_APPENDIX_RE = re.compile(r"^Appendix\s+[A-Z\d]+[:.\s-]?.*$", re.IGNORECASE)
 SHORT_HEADING_RE = re.compile(r"^[^\s，。！？；;,.!?]{4,40}$")
+FRONT_TOC_LINE_RE = re.compile(
+    r"^(译\s*序|序\s*言|前\s*言|后\s*记|第\s*[一二三四五六七八九十百千万\d]+\s*[篇章部编]\s*.+|附录[一二三四五六七八九十百千万\d]?.*)$"
+)
 
 
 def infer_txt_toc(pages: list[PageText], profile: str = "social_science") -> list[TocItem]:
@@ -56,6 +60,194 @@ def infer_txt_toc(pages: list[PageText], profile: str = "social_science") -> lis
         toc_items.append(toc)
         stack.append(toc)
     return toc_items
+
+
+def repair_toc_titles_from_text_pages(pages: list[PageText], toc_items: list[TocItem]) -> int:
+    """Replace garbled PDF outline titles with clean titles from front-matter TOC pages."""
+    if not toc_items or not any(is_garbled_title(item.title) for item in toc_items):
+        return 0
+    candidates = extract_front_matter_toc_candidates(pages)
+    if len(candidates) < max(3, int(len(toc_items) * 0.6)):
+        return 0
+    repaired = 0
+    for item, candidate in zip(toc_items, candidates):
+        if is_garbled_title(item.title) and candidate["level"] == item.level:
+            item.title = candidate["title"]
+            item.locate = {
+                **(item.locate or {}),
+                "repair": "front_matter_toc",
+                "original_title_was_garbled": True,
+            }
+            repaired += 1
+    return repaired
+
+
+def extract_front_matter_toc_candidates(pages: list[PageText], max_pages: int = 8) -> list[dict]:
+    candidates: list[dict] = []
+    seen = set()
+    for page in pages[:max_pages]:
+        for raw_line in page.text.splitlines():
+            line = normalize_text(raw_line)
+            if not line or line == "目录":
+                continue
+            if not FRONT_TOC_LINE_RE.match(line):
+                continue
+            key = normalize_title(line)
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append({"title": line, "level": infer_front_toc_level(line)})
+    return candidates
+
+
+def infer_front_toc_level(line: str) -> int:
+    if re.match(r"^第\s*[一二三四五六七八九十百千万\d]+\s*章", line):
+        return 2
+    if re.match(r"^第\s*[一二三四五六七八九十百千万\d]+\s*[篇部编]", line):
+        return 1
+    if re.match(r"^附录", line):
+        return 1
+    return 1
+
+
+def is_garbled_title(title: str) -> bool:
+    if not title:
+        return False
+    weird = 0
+    meaningful = 0
+    for ch in title:
+        if ch.isspace():
+            continue
+        code = ord(ch)
+        category = unicodedata.category(ch)
+        if (
+            0x0590 <= code <= 0x08FF
+            or 0x0D00 <= code <= 0x0D7F
+            or 0x0C80 <= code <= 0x0CFF
+            or 0xFB00 <= code <= 0xFEFF
+        ):
+            return True
+        if 0xE000 <= code <= 0xF8FF or category in {"So", "Sk"} and ch not in {"·"}:
+            return True
+        if "\u4e00" <= ch <= "\u9fff" or ch.isalnum() or ch in "：:、，,（）()[]【】《》一二三四五六七八九十百千万章节篇部编附录译序言":
+            meaningful += 1
+            continue
+        if 0xE000 <= code <= 0xF8FF or code < 32 or code in {0xFFFD}:
+            weird += 2
+        elif code > 0x2FFF:
+            weird += 1
+    total = meaningful + weird
+    return total > 0 and weird / total >= 0.18
+
+
+def augment_toc_with_body_headings(
+    pages: list[PageText],
+    toc_items: list[TocItem],
+    profile: str = "social_science",
+    max_headings_per_parent: int = 16,
+) -> int:
+    if not toc_items:
+        return 0
+    lines = flatten_page_lines(pages)
+    start_indexes = locate_heading_lines(lines, toc_items)
+    parent_ids = {item.parent_toc_id for item in toc_items if item.parent_toc_id}
+    existing_titles = {normalize_title(item.title) for item in toc_items}
+    additions: list[tuple[int, TocItem]] = []
+    next_auto = 1
+    for idx, parent in enumerate(toc_items):
+        if parent.toc_id in parent_ids or parent.toc_id not in start_indexes:
+            continue
+        if parent.level > 2 or not is_augmentable_parent(parent):
+            continue
+        start_idx = start_indexes[parent.toc_id]
+        end_idx = len(lines)
+        for later in toc_items[idx + 1 :]:
+            later_idx = start_indexes.get(later.toc_id)
+            if later_idx is not None and later.level <= parent.level:
+                end_idx = later_idx
+                break
+        raw_candidates: list[tuple[int, str]] = []
+        for line_idx in range(start_idx + 1, end_idx):
+            title = lines[line_idx]["text"].strip()
+            key = normalize_title(title)
+            if key in existing_titles:
+                continue
+            if not is_body_short_heading(title, profile):
+                continue
+            raw_candidates.append((line_idx, title))
+        found_for_parent = 0
+        for line_idx, title in filter_candidate_heading_runs(raw_candidates):
+            key = normalize_title(title)
+            toc = TocItem(
+                toc_id=f"toc:auto:{next_auto:06d}",
+                title=title,
+                level=parent.level + 1,
+                order=0,
+                parent_toc_id=parent.toc_id,
+                page=lines[line_idx]["page"],
+                locate={"method": "body_short_heading", "confidence": 0.72},
+            )
+            additions.append((line_idx, toc))
+            existing_titles.add(key)
+            next_auto += 1
+            found_for_parent += 1
+            if found_for_parent >= max_headings_per_parent:
+                break
+    if not additions:
+        return 0
+    sort_keys = {item.toc_id: start_indexes.get(item.toc_id, len(lines) + item.order) for item in toc_items}
+    all_items = [(sort_keys[item.toc_id], item) for item in toc_items] + additions
+    all_items.sort(key=lambda pair: (pair[0], pair[1].level))
+    toc_items[:] = [item for _, item in all_items]
+    for order, item in enumerate(toc_items, start=1):
+        item.order = order
+    return len(additions)
+
+
+def is_augmentable_parent(item: TocItem) -> bool:
+    return bool(CHAPTER_RE.match(item.title) or EN_CHAPTER_RE.match(item.title))
+
+
+def is_body_short_heading(line: str, profile: str = "social_science") -> bool:
+    if not line or len(line) < 4 or len(line) > 30:
+        return False
+    if line.endswith(("。", "，", "；", "：", "！", "？", ".", ",", ";", ":", "!", "?")):
+        return False
+    if any(mark in line for mark in ("。", "！", "？", "；", "“", "”", '"')):
+        return False
+    if CHAPTER_RE.match(line) or PART_RE.match(line) or SECTION_RE.match(line):
+        return False
+    if "《" in line or "》" in line or "——" in line:
+        return False
+    if line[0] in "（([ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz":
+        return False
+    if line.count("（") != line.count("）") or line.count("(") != line.count(")"):
+        return False
+    cjk_count = len(re.findall(r"[\u4e00-\u9fff]", line))
+    if cjk_count < 4:
+        return False
+    ascii_count = len(re.findall(r"[A-Za-z]", line))
+    if ascii_count and ascii_count / max(1, len(line)) > 0.35:
+        return False
+    if profile == "reference":
+        return False
+    return True
+
+
+def filter_candidate_heading_runs(candidates: list[tuple[int, str]]) -> list[tuple[int, str]]:
+    if len(candidates) < 3:
+        return candidates
+    out: list[tuple[int, str]] = []
+    indexes = [idx for idx, _ in candidates]
+    for pos, candidate in enumerate(candidates):
+        prev_adjacent = pos > 0 and indexes[pos] == indexes[pos - 1] + 1
+        next_adjacent = pos + 1 < len(indexes) and indexes[pos + 1] == indexes[pos] + 1
+        prev_prev_adjacent = pos > 1 and indexes[pos - 1] == indexes[pos - 2] + 1
+        next_next_adjacent = pos + 2 < len(indexes) and indexes[pos + 2] == indexes[pos + 1] + 1
+        if (prev_adjacent and next_adjacent) or (prev_adjacent and prev_prev_adjacent) or (next_adjacent and next_next_adjacent):
+            continue
+        out.append(candidate)
+    return out
 
 
 def is_possible_heading(line: str, profile: str = "social_science") -> bool:
@@ -230,7 +422,10 @@ def build_sections(
         end_idx = len(lines)
         for later in toc_items[i + 1 :]:
             later_idx = start_indexes.get(later.toc_id)
-            if later_idx is not None and later.level <= item.level:
+            child_boundary = later.parent_toc_id == item.toc_id and should_stop_section_at_child(
+                item, max_chunk_heading_level
+            )
+            if later_idx is not None and (later.level <= item.level or child_boundary):
                 end_idx = later_idx
                 break
         body_start = skip_wrapped_heading_lines(lines, start_idx, item.title)
@@ -352,11 +547,21 @@ def leaf_or_content_sections(
         if not section.text.strip():
             continue
         if max_chunk_heading_level is not None:
+            if section.toc_item.toc_id in parent_ids and section.toc_item.level < max_chunk_heading_level:
+                selected.append(section)
+                continue
             if section.toc_item.level == max_chunk_heading_level:
                 selected.append(section)
             elif section.toc_item.level < max_chunk_heading_level and section.toc_item.toc_id not in parent_ids:
                 selected.append(section)
             continue
+        if section.toc_item.toc_id in parent_ids:
+            selected.append(section)
+            continue
         if section.toc_item.toc_id not in parent_ids:
             selected.append(section)
     return selected
+
+
+def should_stop_section_at_child(item: TocItem, max_chunk_heading_level: int | None) -> bool:
+    return max_chunk_heading_level is None or item.level < max_chunk_heading_level

@@ -11,11 +11,22 @@ def make_chunks(
     max_chars: int = 1200,
     min_chunk_chars: int = 220,
     overlap_chars: int = 100,
+    section_split_chars: int | None = None,
 ) -> list[ChunkDraft]:
+    section_split_chars = section_split_chars or max_chars
     drafts: list[ChunkDraft] = []
     grouped = group_by_parent(sections)
     for group in grouped:
-        drafts.extend(chunk_sibling_group(group, target_chars, max_chars, min_chunk_chars, overlap_chars))
+        drafts.extend(
+            chunk_sibling_group(
+                group,
+                target_chars,
+                max_chars,
+                min_chunk_chars,
+                overlap_chars,
+                section_split_chars,
+            )
+        )
     return drafts
 
 
@@ -41,6 +52,7 @@ def chunk_sibling_group(
     max_chars: int,
     min_chunk_chars: int,
     overlap_chars: int,
+    section_split_chars: int,
 ) -> list[ChunkDraft]:
     out: list[ChunkDraft] = []
     i = 0
@@ -50,7 +62,7 @@ def chunk_sibling_group(
         if not text:
             i += 1
             continue
-        if len(text) > max_chars:
+        if len(text) > section_split_chars:
             out.extend(split_long_section(section, max_chars, overlap_chars))
             i += 1
             continue
@@ -62,7 +74,12 @@ def chunk_sibling_group(
                     merged_headings=[],
                     page_start=section.page_start,
                     page_end=section.page_end,
-                    split_info={"strategy": "toc_node", "reason": "section_within_size"},
+                    split_info={
+                        "strategy": "toc_node",
+                        "reason": "natural_section_within_split_threshold",
+                        "section_split_chars": section_split_chars,
+                    },
+                    source_metadata=section.source_metadata,
                 )
             )
             i += 1
@@ -109,6 +126,7 @@ def chunk_sibling_group(
                     page_start=section.page_start,
                     page_end=section.page_end,
                     split_info={"strategy": "toc_node", "reason": "short_section_without_merge_target"},
+                    source_metadata=section.source_metadata,
                 )
             )
             i += 1
@@ -126,6 +144,7 @@ def chunk_sibling_group(
                     "reason": "merged_short_sibling_sections",
                     "merged_toc_ids": [s.toc_item.toc_id for s in merged],
                 },
+                source_metadata=merge_source_metadata(merged),
             )
         )
         i += len(merged)
@@ -168,9 +187,29 @@ def split_long_section(section: Section, max_chars: int, overlap_chars: int) -> 
                 "part_index": idx,
                 "part_count": total,
             },
+            source_metadata=section.source_metadata,
         )
         for idx, part in enumerate(parts, start=1)
     ]
+
+
+def merge_source_metadata(sections: list[Section]) -> dict:
+    if not sections:
+        return {}
+    first = dict(sections[0].source_metadata)
+    unique_sources = []
+    seen = set()
+    for section in sections:
+        source = section.source_metadata
+        key = (source.get("file_path"), source.get("logical_date"))
+        if key in seen:
+            continue
+        seen.add(key)
+        if source:
+            unique_sources.append(source)
+    if len(unique_sources) > 1:
+        first["merged_sources"] = unique_sources
+    return first
 
 
 def split_oversized_unit(unit: str, max_chars: int, overlap_chars: int) -> list[str]:

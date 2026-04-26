@@ -77,6 +77,7 @@ def make_chunk_records(
             "source": {
                 "pdf_page_start": chunk.page_start,
                 "pdf_page_end": chunk.page_end,
+                **chunk.source_metadata,
             },
             "prev_chunk_id": chunk_ids[idx - 2] if idx > 1 else None,
             "next_chunk_id": chunk_ids[idx] if idx < len(chunks) else None,
@@ -90,4 +91,3 @@ def make_chunk_records(
         }
         records.append(record)
     return records
-

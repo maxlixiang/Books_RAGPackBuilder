@@ -1,8 +1,11 @@
+from pathlib import Path
+
 from ragpack_builder.classifier import (
     choose_profile,
     english_ratio,
     format_classification_scores,
     format_classification_signals,
+    is_ignored_local_file,
 )
 
 
@@ -39,3 +42,9 @@ def test_format_classification_signals_summarizes_winner_first():
         "social_science+10: detected chapter-only structure; detected philosophy/social-science vocabulary",
         "fiction+2: detected chapter-only structure",
     ]
+
+
+def test_ignored_local_files_are_skipped():
+    assert is_ignored_local_file(Path(".gitkeep"))
+    assert is_ignored_local_file(Path(".DS_Store"))
+    assert not is_ignored_local_file(Path("book.pdf"))

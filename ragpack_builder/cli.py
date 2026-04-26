@@ -8,7 +8,13 @@ from .classifier import classify_raw_entries, format_classification_scores, form
 from .embeddings import NullEmbedder, SentenceTransformerEmbedder
 from .extractors import ImageOnlyPdfError, UnsupportedSourceError, extract_document
 from .profiles import DEFAULT_MODEL, PROFILE_DEFAULTS
-from .toc import build_sections, infer_txt_toc, locate_toc_items
+from .toc import (
+    augment_toc_with_body_headings,
+    build_sections,
+    infer_txt_toc,
+    locate_toc_items,
+    repair_toc_titles_from_text_pages,
+)
 from .utils import now_iso, safe_stem, sha256_file
 from .writer import build_embedding_text, make_chunk_records, toc_record, write_jsonl
 
@@ -23,8 +29,14 @@ def build_pack(args: argparse.Namespace) -> Path:
         toc_items = infer_txt_toc(pages, profile=args.profile)
         toc_source = "txt_heading_rules" if toc_items else "synthetic"
     else:
+        repaired_count = repair_toc_titles_from_text_pages(pages, toc_items)
         locate_toc_items(pages, toc_items, args.search_before_pages, args.search_after_pages)
+        augmented_count = augment_toc_with_body_headings(pages, toc_items, profile=args.profile)
         toc_source = "pdf_outline"
+        if repaired_count:
+            toc_source += "+front_matter_repair"
+        if augmented_count:
+            toc_source += "+body_heading_augmentation"
 
     sections = build_sections(pages, toc_items, max_chunk_heading_level=args.max_chunk_heading_level)
     chunks = make_chunks(
@@ -33,6 +45,7 @@ def build_pack(args: argparse.Namespace) -> Path:
         max_chars=args.max_chars,
         min_chunk_chars=args.min_chunk_chars,
         overlap_chars=args.overlap_chars,
+        section_split_chars=args.section_split_chars,
     )
 
     if args.no_embedding:
@@ -70,6 +83,7 @@ def build_pack(args: argparse.Namespace) -> Path:
             "profile": args.profile,
             "target_chars": args.target_chars,
             "max_chars": args.max_chars,
+            "section_split_chars": args.section_split_chars,
             "overlap_chars": args.overlap_chars,
             "min_chunk_chars": args.min_chunk_chars,
             "max_chunk_heading_level": args.max_chunk_heading_level,
@@ -95,7 +109,14 @@ def build_pack(args: argparse.Namespace) -> Path:
 
 def apply_profile_defaults(args: argparse.Namespace) -> None:
     defaults = PROFILE_DEFAULTS[args.profile]
-    for name in ("target_chars", "max_chars", "min_chunk_chars", "overlap_chars", "max_chunk_heading_level"):
+    for name in (
+        "target_chars",
+        "max_chars",
+        "section_split_chars",
+        "min_chunk_chars",
+        "overlap_chars",
+        "max_chunk_heading_level",
+    ):
         if getattr(args, name) is None:
             setattr(args, name, defaults[name])
 
@@ -119,6 +140,12 @@ def make_parser() -> argparse.ArgumentParser:
     build.add_argument("--no-embedding", action="store_true", help="Write empty embedding arrays for dry runs.")
     build.add_argument("--target-chars", type=int, default=None)
     build.add_argument("--max-chars", type=int, default=None)
+    build.add_argument(
+        "--section-split-chars",
+        type=int,
+        default=None,
+        help="Natural section length threshold. Sections at or below this size stay as one chunk.",
+    )
     build.add_argument("--min-chunk-chars", type=int, default=None)
     build.add_argument("--overlap-chars", type=int, default=None)
     build.add_argument(

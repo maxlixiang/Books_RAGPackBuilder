@@ -14,10 +14,12 @@ env/
 raw_data/**
 !raw_data/
 !raw_data/.gitkeep
-!raw_data/*/
-!raw_data/*/.gitkeep
+!raw_data/**/
+!raw_data/**/.gitkeep
 output/*
 !output/.gitkeep
+!output/*/
+!output/*/.gitkeep
 
 # Large model/cache artifacts
 models/

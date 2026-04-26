@@ -10,6 +10,7 @@ from .profiles import PROFILE_DEFAULTS
 
 
 PROFILE_DIRS = tuple(PROFILE_DEFAULTS.keys())
+IGNORED_LOCAL_FILENAMES = {".gitkeep", ".gitignore", ".ds_store", "thumbs.db"}
 
 
 @dataclass
@@ -192,6 +193,8 @@ def classify_raw_entries(raw_dir: Path, move: bool = True) -> tuple[list[Classif
     results: list[Classification] = []
     errors: list[ClassificationError] = []
     for source in sorted(path for path in raw_dir.iterdir() if path.is_file()):
+        if is_ignored_local_file(source):
+            continue
         suffix = source.suffix.lower()
         if suffix == ".txt":
             errors.append(ClassificationError(source, "TXT 文件不需要自动分类，请放入对应分类文件夹后再构建"))
@@ -210,6 +213,10 @@ def classify_raw_entries(raw_dir: Path, move: bool = True) -> tuple[list[Classif
             shutil.move(str(source), str(destination))
         results.append(Classification(source, profile, destination, scores, signals))
     return results, errors
+
+
+def is_ignored_local_file(path: Path) -> bool:
+    return path.name.lower() in IGNORED_LOCAL_FILENAMES or path.name.startswith(".")
 
 
 def unique_destination(path: Path) -> Path:
