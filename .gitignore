@@ -11,12 +11,15 @@ venv/
 env/
 
 # Local source books and generated RAG packs
+*.pdf
+*.jsonl
 raw_data/**
 !raw_data/
 !raw_data/.gitkeep
 !raw_data/**/
 !raw_data/**/.gitkeep
 output/*
+output/**/*.jsonl
 !output/.gitkeep
 !output/*/
 !output/*/.gitkeep
